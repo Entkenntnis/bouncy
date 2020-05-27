@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <style>
+      body, html, canvas {
+        margin:0;
+        padding:0;
+        overflow:hidden;
+        display:block;
+      }
+      canvas {
+        position:absolute;
+        left:50%;
+        top:50%;
+        -webkit-transform:translate(-50%,-50%);
+        -moz-transform:translate(-50%, -50%);
+        transform:translate(-50%,-50%);
+      }
+      body {
+        background-color:black;
+      }
+    </style>
+    <script src="easel.js"></script>
+    <script src="sound.js"></script>
+    <script src="tween.js"></script>
+    <script>
+    
+    
+      // system code ---------------- START -------------------------
+      
+      'use strict';
+      
+      var stage;
+      var stageWidth = 1600;
+      var stageHeight = 900;
+      
+      var curScene = '';
+      var initHandler = function() {};
+      var entryHandler = [];
+      var exitHandler = [];
+      var keyHandler = [];
+      var drawHandler = [];
+      var tickHandler = [];
+      var keyMap = [];
+      
+      function registerKey(scene, key, func) {
+        if (!(scene in keyHandler))
+          keyHandler[scene] = [];
+        keyHandler[scene][key] = func;
+      }
+      
+      function callHandler(lst) {
+        if (curScene in lst)
+          lst[curScene]();
+      }
+      
+      function changeScene(next) {
+        callHandler(exitHandler);
+        curScene = next;
+        callHandler(entryHandler);
+      }
+      
+      function tick(event) {
+        if (curScene in tickHandler)
+          tickHandler[curScene](event);
+        callHandler(drawHandler);
+      }
+      
+      var _MAP = {
+        8: 'backspace', 9: 'tab', 13: 'enter', 16: 'shift', 17: 'ctrl', 18: 'alt', 20: 'capslock',
+        27: 'esc', 32: ' ', 33: 'pageup', 34: 'pagedown', 35: 'end', 36: 'home', 37: 'left',
+        38: 'up', 39: 'right', 40: 'down', 45: 'ins', 46: 'del', 91: 'meta', 93: 'meta'
+      };
+      
+      function getKey(e) {
+        var key = _MAP[e.keyCode];
+        if (key == undefined) {
+          key = String.fromCharCode(e.keyCode);
+        }
+        if (key && 'string' == typeof key) {
+          key = key.toLowerCase();
+        }
+        return key;
+      }
+      
+      function handleKeyDown(e) {
+        var key = getKey(e);
+        if (key == undefined) return;
+        keyMap[key] = true;
+        if (curScene in keyHandler) {
+          if (key in keyHandler[curScene]) {
+            keyHandler[curScene][key]();
+          } 
+        }
+      }
+      
+      function handleKeyUp(e) {
+        var key = getKey(e);
+        if (key == undefined) return;
+        keyMap[key] = false;
+      }
+      
+      function init() {
+        stage = new createjs.Stage("mainCanvas");
+        window.addEventListener('resize', resize, false);
+        resize();
+        createjs.Ticker.setFPS(60);
+        createjs.Ticker.addEventListener("tick", tick);
+        document.onkeydown = handleKeyDown;
+        document.onkeyup = handleKeyUp;
+        initHandler();
+      }
+      
+      function resize() { 
+        var w = document.documentElement.clientWidth;
+        var h = document.documentElement.clientHeight;
+        var ow = stageWidth;
+        var oh = stageHeight;
+        var scale = Math.min(w / ow, h / oh);
+        stage.scaleX = scale;
+        stage.scaleY = scale;
+        stage.canvas.width = ow * scale;
+        stage.canvas.height = oh * scale;
+        stage.update();
+      }
+      
+      function drawCircle(x, y, r, color) {
+        var shape = new createjs.Shape();
+        shape.graphics.beginFill(color).drawCircle(x, y, r);
+        return stage.addChild(shape);
+      }
+      
+      function drawRect(x, y, w, h, color) {
+        var shape = new createjs.Shape();
+        shape.graphics.beginFill(color).drawRect(x, y, w, h);
+        return stage.addChild(shape);
+      }
+      
+      function drawText(text, font, color, x, y) {
+        var t = new createjs.Text(text, font, color);
+        t.x = x;
+        t.y = y;
+        t.textBaseline = "alphabetic";
+        return stage.addChild(t);
+      }
+      
+      function centerH(obj) {
+        obj.x -= obj.getBounds().width/2;
+        return obj;
+      }
+      
+      function centerV(obj) {
+        obj.y -= obj.getBounds().height/2;
+        return obj;
+      }
+      
+      
+      // system code -------------------- END ---------------------------
+      
+      
+      // Game constants
+      var GameX = {
+          backgroundColor:'#00001a'
+        , colorA:'#00ff00'
+        , colorB:'#ff6600'
+        , highlightColor:'yellow'
+        , boundColor:'#0000ff'
+        , circleColor:'#ff99ff'
+        , barBackColor:'#aaaaaa'
+        , playerSpeed:300
+        , circleSpawnRate:0.1
+        , goldRate:0.1
+        , time:31000
+        , normalGrow:1.4
+        , field:'onlytop'
+        
+        , bounds:undefined
+        , boundContainer:undefined
+        
+        , buildBounds:function() {
+          GameX.bounds = [];
+          GameX.boundContainer = new createjs.Container()
+          var addBound = function(x, y, w, h, color) {
+            var shape = new createjs.Shape();
+            shape.graphics.beginFill(color).drawRect(x, y, w, h);
+            GameX.boundContainer.addChild(shape);
+            GameX.bounds.push({x:x,y:y,w:w,h:h});
+          };
+          var color = GameX.boundColor;
+          var size = 30;
+          addBound(0, 0, 600, size, color); // top left
+          addBound(1000, 0, 600, size, color); //top right
+          addBound(600, 0, 400, 10, GameX.highlightColor); // top gate
+          if (GameX.field != 'onlytop') {
+            addBound(0, size, size, 300-size, color); // left
+            addBound(0, 600, size, 300-size, color);
+            addBound(0, 300, 10, 300, GameX.highlightColor);
+            addBound(stageWidth-size, size, size, 300-size, color); // right
+            addBound(stageWidth-size, 600, size, 300-size, color);
+            addBound(stageWidth-10, 300, 10, 300, GameX.highlightColor);
+            addBound(0, stageHeight-size, 600, size, color); // bottom left
+            addBound(1000, stageHeight-size, 600, size, color); // bottom right
+            addBound(600, stageHeight-10, 400, 10, GameX.highlightColor); // bottom gate
+            if (GameX.field != 'nomid')
+              addBound(400, 350, 800, 200, color); // mid
+          }
+          GameX.boundContainer.cache(0, 0, stageWidth, stageHeight);
+        }
+      };
+      
+      // the game model
+      var Game = {
+          scoreA:0
+        , scoreB:0
+        
+        , playerA:undefined // init on game start
+        , playerB:undefined
+        , circles:undefined
+        , pointsA:undefined
+        , pointsB:undefined
+        , timeLeft:undefined
+        
+        
+        , prepareGame:function() {
+          Game.playerA = { x:200, y:450, r:40, rInner:15, grow:0, s:false};
+          Game.playerB = { x:1400, y:450, r:40, rInner:15, grow:0, s:false};
+          Game.circles = [];
+          Game.pointsA = 0;
+          Game.pointsB = 0;
+          Game.timeLeft = GameX.time;
+        }
+          
+        , spawnCircle:function() {
+          Game.circles.push(new Circle());
+        }
+        
+        , movePlayers:function(e) {
+        
+        
+          var distance = e.delta/1000.0*GameX.playerSpeed;
+          var dA = Game.playerA.s?distance*2:distance;
+          var dB = Game.playerB.s?distance*2:distance;
+          var f = function(obj) {return !playerIntersect();};
+          if (keyMap['a'])
+            moveTo(Game.playerA, Game.playerA.x-dA, Game.playerA.y, f);
+          if (keyMap['d'])
+            moveTo(Game.playerA, Game.playerA.x+dA, Game.playerA.y, f);
+          if (keyMap['w'])
+            moveTo(Game.playerA, Game.playerA.x, Game.playerA.y-dA, f);
+          if (keyMap['s'])
+            moveTo(Game.playerA, Game.playerA.x, Game.playerA.y+dA, f);
+          if (keyMap['left'])
+            moveTo(Game.playerB, Game.playerB.x-dB, Game.playerB.y, f);
+          if (keyMap['right'])
+            moveTo(Game.playerB, Game.playerB.x+dB, Game.playerB.y, f);
+          if (keyMap['up'])
+            moveTo(Game.playerB, Game.playerB.x, Game.playerB.y-dB, f);
+          if (keyMap['down'])
+            moveTo(Game.playerB, Game.playerB.x, Game.playerB.y+dB, f);
+        }
+        
+        , moveCircles:function(e) {
+          Game.circles.forEach(function(c){
+            var distance = e.delta/1000.0*100;
+            var bx = c.x;
+            var by = c.y;
+            c.x += Math.cos(c.angle/180.0*Math.PI)*distance;
+            c.y += Math.sin(c.angle/180.0*Math.PI)*distance;
+            
+            // collision detection .... working now
+            for(var i = 0; i < GameX.bounds.length; i++) {
+              var cur = GameX.bounds[i];
+              if (circleRectIntersect(cur, c)) {
+                var hw = cur.w/2.0;
+                var hh = cur.h/2.0;
+                var xd = Math.abs(c.x - (cur.x + hw)) - hw;
+                var yd = Math.abs(c.y - (cur.y + hh)) - hh;
+                if ((bx < cur.x || bx > cur.x+cur.w) &&
+                     by > cur.y && by < cur.y + cur.h) {
+                  c.angle = 180.0 - c.angle;
+                } else if ((by < cur.y || by > cur.y+cur.h) && bx > cur.x && bx < cur.x + cur.w){
+                  c.angle = 360.0 - c.angle;
+                } else {
+                  c.angle = Math.random() * 360.0;
+                }
+              }
+            }
+            var newX = c.x;
+            var newY = c.y;
+            c.x = bx; c.y = by;
+            moveTo(c, newX, newY, function(obj){return true;});
+          });
+        }
+        
+        , collectHits:function() {
+          var toRemove = [];
+          Game.circles.forEach(function(c){
+            var handle = function(circle, player, points) {
+              if (circleIntersect(circle, player)) {
+                toRemove.push(circle);
+                if (circle.type=='normal') {
+                  Game[points]++;
+                  player.grow+= GameX.normalGrow;
+                } else if (circle.type == 'gold'){
+                  Game[points]+=3;
+                  player.grow+= GameX.normalGrow;
+                } else if (circle.type == 'speed') {
+                  createjs.Tween.get(player, {override:true}).to({s:true}).wait(5000).to({s:false});
+                }
+              }
+            }
+            handle(c, Game.playerA, 'pointsA');
+            handle(c, Game.playerB, 'pointsB');
+          });
+          toRemove.forEach(function(e){
+            var index = Game.circles.indexOf(e);
+            Game.circles.splice(index, 1);
+          });
+        }
+        
+      };
+      
+      function Circle() {
+        var x = 100; var y = 100;
+        if (GameX.field != 'onlytop') {
+          if (Math.random()<0.5) {
+            y = (Math.random()<0.5?21:stageHeight-21);
+            x = Math.random()*360 + 620;
+          } else {
+            x = (Math.random()<0.5?21:stageWidth-21);
+            y=Math.random()*260 + 320;
+          }
+        } else {
+          y = 21;
+          x = Math.random()*360 + 620;
+        }
+        this.x = x;
+        this.y = y;
+        this.r = 10;
+        this.angle = Math.random() * 360;
+        this.type = 'normal';
+        if (Math.random() < GameX.goldRate) {
+          this.type = 'gold';
+        }
+      }
+      
+      // public functions for all scenes
+      
+      function drawBackground() {
+        drawRect(0, 0, stageWidth, stageHeight, GameX.backgroundColor);
+      }
+      
+      function drawOverlay() {
+        drawRect(0, 0, stageWidth, stageHeight, 'black').alpha = 0.6;
+      }
+      
+      function circleFree(circle) {
+        for(var i = 0; i < GameX.bounds.length; i++) {
+          if (circleRectIntersect(GameX.bounds[i], circle)) {
+            return false;
+          }
+        }
+        return true;
+      }
+      
+      function circleRectIntersect(rect, circle) {
+        var cdx = Math.abs(circle.x - (rect.x+rect.w/2));
+        var cdy = Math.abs(circle.y - (rect.y+rect.h/2));
+        
+        if (cdx > (rect.w/2 + circle.r)) return false;
+        if (cdy > (rect.h/2 + circle.r)) return false;
+        
+        if (cdx <= (rect.w/2)) return true;
+        if (cdy <= (rect.h/2)) return true;
+        
+        var cdsq = Math.pow((cdx - rect.w/2), 2) + Math.pow((cdy - rect.h/2), 2);
+        return cdsq <= Math.pow(circle.r, 2);
+      }
+      
+      function moveTo(obj, newX, newY, cond, bs) {
+        if (bs == undefined) bs = GameX.bounds;
+        var cx = obj.x, cy = obj.y;
+        var dis = Math.pow(newX-cx, 2) + Math.pow(newY-cy, 2);
+        var mx = (newX+cx)/2;
+        var my = (newY+cy)/2;
+        obj.x = newX; obj.y = newY;
+        var collisions = [];
+        bs.forEach(function(b){
+          if (circleRectIntersect(b, obj))
+            collisions.push(b);
+        });
+        if (collisions.length == 0 && cond(obj)) {
+            return;
+        } else {
+          obj.x = cx; obj.y = cy;
+          if (dis > 1) {
+            moveTo(obj, mx, my, cond, collisions);
+          }
+        }
+      }
+      
+      function circleIntersect(a, b) {
+        return Math.pow(a.x-b.x, 2) +
+               Math.pow(a.y-b.y, 2) <
+               Math.pow(a.r+b.r, 2);
+      }
+      
+      function playerIntersect() {
+        return circleIntersect(Game.playerA, Game.playerB);
+      }
+      
+      var Options = {
+          redraw:true
+        , curLine:0
+        , settings:[0,1,0,0]
+        , standard:[0,1,0,0]
+        , values:[["circleSpawnRate", 0.1, 0.4, 1],
+                  ["normalGrow", 0.3, 0.9, 1.5],
+                  ["time", 31000, 61000, 91000],
+                  ["field", 'normal', 'nomid', 'onlytop']]
+        , updateValues : function() {
+          for (var i = 0; i < Options.values.length; i++) {
+            GameX[Options.values[i][0]] = Options.values[i][Options.settings[i]+1];
+          }
+          GameX.buildBounds();
+          GameX.redraw = true;
+        }
+      }
+      
+      initHandler = function() {
+        Options.updateValues();
+        changeScene('splash');
+      }
+      
+      // --------------------------splash scene
+      
+      entryHandler['splash'] = function() {
+        stage.removeAllChildren();
+        drawBackground();
+        centerH(drawText(Game.scoreA, "500px Arial", GameX.colorA, 400, 500));
+        centerH(drawText(Game.scoreB, "500px Arial", GameX.colorB, 1200, 500));
+        centerH(drawText(":", "500px Arial", 'white', 800, 500));
+        drawText("[N]eue Runde\n\n[O]ptionen", "40px Arial", 'white', 100, 750);
+        stage.update();
+      }
+      
+      registerKey('splash', 'n', function() {
+        changeScene('countdown');
+      });
+      
+      registerKey('splash', 'o', function() {
+        changeScene('options');
+      });
+      
+      
+      // ---------------------------options scene
+      
+      
+      
+      entryHandler['options'] = function() {
+        Options.redraw = true;
+        Options.curLine = 0;
+      }
+      
+      exitHandler['options'] = function() {
+        createjs.Tween.removeAllTweens();
+      }
+      
+      drawHandler['options'] = function() {
+        if (Options.redraw) {
+          Option.redraw = false;
+          if (Options.curLine == Options.values.length) {
+            createjs.Tween.get(Options).wait(400).call(function(){changeScene('splash')});
+          } else {
+            createjs.Tween.removeAllTweens();
+          }
+          
+          stage.removeAllChildren();
+          drawBackground();
+          centerH(drawText("Optionen", "100px Arial", "white", 800, 140));
+          drawText("[S]tandard", "40px Arial", "white", 1300, 850);
+          
+          
+          drawRect(100,  330+Options.curLine*100 - 70, 1400, 100, GameX.highlightColor);
+              
+          for (var i = 0; i < Options.values.length; i++) {
+            drawRect(600+Options.settings[i]*300-135, 330+i*100 - 65, 270, 90, GameX.colorA);
+          }
+          
+          var drawOptionLine = function(label, options, y, i) {
+            var color = "white";
+            if (Options.curLine == i) {
+              color = "blue";
+            }
+            drawText(label, "60px Arial", GameX.circleColor, 150, y);
+            centerH(drawText(options[0], "60px Arial", color, 600, y));
+            centerH(drawText(options[1], "60px Arial", color, 900, y));
+            centerH(drawText(options[2], "60px Arial", color, 1200, y));
+          };
+          
+          drawOptionLine("Kreise", ["wenig", "viel", "extrem"], 330, 0);
+          drawOptionLine("Wachstum", ["gering", "mittel", "stark"], 430, 1);
+          drawOptionLine("Zeit", ["30s", "60s", "90s"], 530, 2);
+          drawOptionLine("Feld", ["normal", "ohne Mitte", "nur oben"], 630, 3);
+          centerH(drawText("Zurück", "60px Arial", Options.curLine==Options.values.length?"blue":"white",800, 730));
+          stage.update();
+        }
+      }
+      
+      
+      registerKey('options', 's', function(){
+        for (var i = 0; i < Options.settings.length; i++) {
+          Options.settings[i] = Options.standard[i];
+        }
+        Options.updateValues();
+      });
+      
+      registerKey('options', 'down', function() {
+        Options.curLine = (Options.curLine + 1) % (Options.values.length + 1);
+        Options.updateValues();
+      });
+      
+      registerKey('options', 'up', function() {
+        Options.curLine = (Options.curLine - 1 + Options.values.length + 1) % (Options.values.length+1);
+        Options.updateValues();
+      });
+      
+      registerKey('options', 'left', function() {
+        var i = Options.curLine;
+        if (i >= Options.values.length) return;
+        Options.settings[i] = (Options.settings[i] - 1 + 3) % 3;
+        Options.updateValues();
+      });
+      
+      registerKey('options', 'right', function() {
+        var i = Options.curLine;
+        if (i >= Options.values.length) return;
+        Options.settings[i] = (Options.settings[i] + 1) % 3;
+        Options.updateValues();
+      });
+      
+      registerKey('options', 'enter', function() {
+        changeScene('splash');
+      });
+      
+      
+      // ---------------------------countdown scene
+      
+      var CD = {
+          time:3
+        , zoom:1
+        , alpha:1
+      }
+      
+      entryHandler['countdown'] = function() {
+        CD.time = 3;
+        createjs.Tween.get(CD, {loop:true}).call(
+          function(){
+            if (CD.time < 0) {
+              changeScene('game');
+            }
+            CD.zoom = 1;
+            CD.alpha = 1;
+            createjs.Tween.get(CD).to({alpha:0, zoom:10}, 900, createjs.Ease.getPowIn(2.2));
+          }).wait(1000).call(function(){CD.time--;});
+      }
+      
+      exitHandler['countdown'] = function() {
+        createjs.Tween.removeAllTweens();
+      }
+      
+      drawHandler['countdown'] = function() {
+        stage.removeAllChildren();
+        drawBackground();
+        stage.addChild(GameX.boundContainer);
+        drawOverlay();
+        centerV(centerH(drawText(CD.time, 100*CD.zoom + "px Arial", 'white', 800, 440+80*CD.zoom))).alpha = CD.alpha;
+        stage.update();
+      }
+      
+      registerKey('countdown', 'p', function() {
+        createjs.Ticker.paused = !createjs.Ticker.paused;
+      });
+      
+      
+      // ---------------------------game scene
+      
+      var Score = {relation:0.5,winner:undefined};
+      
+      entryHandler['game'] = function() {
+        Score.relation = 0.5;
+        Game.prepareGame();
+        createjs.Tween.get(Game).to({timeLeft:0}, Game.timeLeft).call(function(){
+          createjs.Tween.get(Game, {loop:true}).wait(10).call(function(){
+            if (Game.pointsA != Game.pointsB)
+              changeScene('result');});
+        });
+        createjs.Tween.get(GameX, {loop:true}).wait(2000+Math.random()*1500).call(function(){
+          var nc = new Circle();
+          nc.type = 'speed';
+          Game.circles.push(nc);
+        });
+      }
+      
+      exitHandler['game'] = function() {
+        createjs.Tween.removeAllTweens();
+        if (Game.pointsA > Game.pointsB) {
+          Score.winner = "A";
+          Game.scoreA++;
+        } else {
+          Score.winner = "B";
+          Game.scoreB++;
+        }
+      }
+      
+      registerKey('game', 'p', function() {
+        createjs.Ticker.paused = !createjs.Ticker.paused;
+      });
+      
+      tickHandler['game'] = function(e) {
+        if (!e.paused) {
+          Game.movePlayers(e);
+          if (Math.random() < GameX.circleSpawnRate) {
+            Game.spawnCircle();
+          }
+          Game.moveCircles(e);
+          Game.collectHits();
+          var sum = Game.pointsA + Game.pointsB;
+          if (sum > 0) {
+            createjs.Tween.get(Score, {override:true}).to({relation:Game.pointsA / sum}, 100, createjs.Ease.quadInOut);
+          }
+          var growSafe = function(p){
+            while (p.grow > 0) {
+              if (p.grow > 1) {
+                p.r+=1;
+                if (!circleFree(p) || playerIntersect()) {
+                  p.r-=1;
+                  return;
+                } else {
+                  p.grow-=1;
+                }
+              } else {
+                p.r += p.grow;
+                if (!circleFree(p) || playerIntersect()) {
+                  p.r -= p.grow;
+                  return;
+                } else {
+                  p.grow = 0;
+                }
+              } 
+            }
+          }
+          growSafe(Game.playerA);
+          growSafe(Game.playerB);
+        }
+      };
+      
+      drawHandler['game'] = function() {
+        stage.removeAllChildren();
+        
+        // background
+        drawBackground();
+        
+        // boundaries
+        stage.addChild(GameX.boundContainer);
+        
+        Game.circles.forEach(function(x) {
+          var color = 'white';
+          if (x.type == 'normal')
+            color = GameX.circleColor;
+          else if (x.type == 'gold')
+            color = GameX.highlightColor;
+          else if (x.type == 'speed')
+            color = 'green';
+          drawCircle(x.x, x.y, x.r, color);
+          if (x.type == 'speed')
+            centerH(drawText('S', "16px Arial", 'white', x.x, x.y+7));
+        });
+        
+        var drawPlayer = function(obj, color) {
+          drawCircle(obj.x, obj.y, obj.r, color);
+          drawCircle(obj.x, obj.y, obj.rInner, GameX.highlightColor);
+          if (obj.s)
+            centerH(drawText('S', "16px Arial", 'black', obj.x, obj.y+7));
+        }
+        
+        drawPlayer(Game.playerA, GameX.colorA);
+        drawPlayer(Game.playerB, GameX.colorB);
+        if (createjs.Ticker.paused) {
+          drawOverlay();
+          centerH(drawText("pause", "300px Arial", 'white', 800, 525));
+        } else {
+          if (Game.timeLeft > 11000) {
+            drawText("Zeit: " + Math.floor(Game.timeLeft/1000) + "s", "45px Arial", 'white', 970, 408);
+          
+          } else {
+            var d = (10000-Game.timeLeft) / 1000;
+            drawText("Zeit: " + Math.floor(Game.timeLeft/1000) + "s", "bold 45px Arial", 'red', 970+Math.random()*d, 408+Math.random()*d);
+          }
+          drawRect(430, 370, 450, 40, GameX.barBackColor);
+          drawRect(430, 370, 450*(Game.timeLeft/GameX.time), 40, "white");
+          
+          // score
+          drawRect(430, 463, 740*Score.relation, 73, GameX.colorA);
+          drawRect(740*Score.relation+430, 463, 740*(1-Score.relation), 73, GameX.colorB);
+          drawText(Game.pointsA, "bold 60px Arial", 'white', 450, 520);
+          var obj = drawText(Game.pointsB, "bold 60px Arial", 'white', 1150, 520);
+          obj.x -= obj.getBounds().width;
+          drawRect(798, 450, 4, 100, GameX.highlightColor);
+        }
+        
+        drawText(Math.round(createjs.Ticker.getMeasuredFPS()), "24px Arial", "white", 0, 24);
+        
+        stage.update();
+      }
+      
+      // ---------------- result scene
+      
+      entryHandler['result'] = function() {
+        stage.removeAllChildren();
+        drawBackground();
+        stage.addChild(GameX.boundContainer);
+        drawOverlay();
+        centerH(drawText(Score.winner + " hat gewonnen", "100px Arial", Score.winner=='A'?GameX.colorA:GameX.colorB, 800, 490));
+        stage.update();
+        createjs.Tween.get(Game).wait(4000).call(function(){changeScene('splash')});
+      }
+      
+      exitHandler['result'] = function() {
+        createjs.Tween.removeAllTweens();
+      }
+      
+        
+    </script>
+  </head>
+  <body onload="init();">
+    <canvas id="mainCanvas">
+      <span style="color:white;">canvas not supported</span>
+    </canvas>
+  </body>
+</html>
